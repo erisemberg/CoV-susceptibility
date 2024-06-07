@@ -1,0 +1,20 @@
+FROM rocker/verse:4.2.1
+
+# Install R packages
+RUN R -e "install.packages('lme4')"
+RUN R -e "install.packages('MESS')" 
+RUN R -e "install.packages('plyr')"
+RUN R -e "install.packages('shades')" 
+RUN R -e "install.packages('extRemes')" 
+RUN R -e "install.packages('factoextra')"
+RUN R -e "install.packages('bestNormalize')" 
+RUN R -e "install.packages('corrplot')"
+RUN R -e "install.packages('pzfx')"
+RUN R -e "install.packages('MASS')"
+RUN R -e "install.packages('qtl')"
+RUN R -e "install.packages('qtl2')"
+RUN R -e "devtools::install_github('variani/lme4qtl')"
+RUN R -e "install.packages('onewaytests')"
+RUN R -e "BiocManager::install('rtracklayer')"
+RUN R -e "BiocManager::install('GenomicFeatures')"
+RUN R -e "install.packages('bestNormalize')"

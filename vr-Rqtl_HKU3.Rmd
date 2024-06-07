@@ -1,0 +1,610 @@
+---
+title: "HKU3-CoV"
+author: "Ellen Risemberg"
+date: "3/28/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/Users/ellenrisemberg/Documents/ValdarFerris/Coronavirus/virus-research")
+```
+
+## Load packages 
+
+```{r message=FALSE, warning=FALSE}
+library(knitr)
+library(qtl)
+library(MESS)
+library(MASS)
+library(cowplot)
+library(readxl)
+library(ggplot2)
+library(scales)
+source('/Users/ellenrisemberg/Documents/ValdarFerris/scripts/qtl_functions.R')
+```
+
+ggplot stuff:
+
+```{r}
+load_themes()
+```
+
+## Load data 
+
+```{r}
+HKU3 <- read.cross(format="csv", file='derived_data/rqtl_files//HKU3_CC006xCC044_rqtl.csv', 
+                      na.strings=c("-","NA", "not tested"), genotypes=c("AA","AB","BB"), 
+                      alleles=c("A","B"))
+HKU3 <- jittermap(HKU3)
+summary(HKU3)
+#plotMap(HKU3) 
+
+HKU3$pheno$batch <- as.factor(HKU3$pheno$batch) # change batch to factor
+```
+
+
+## Calculate derived measures 
+
+**Calculate percentage of starting weight**
+
+```{r}
+HKU3$pheno$pd0 <- 100
+HKU3$pheno$pd1 <- (HKU3$pheno$d1/HKU3$pheno$d0)*100
+HKU3$pheno$pd2 <- (HKU3$pheno$d2/HKU3$pheno$d0)*100
+HKU3$pheno$pd3 <- (HKU3$pheno$d3/HKU3$pheno$d0)*100
+HKU3$pheno$pd4 <- (HKU3$pheno$d4/HKU3$pheno$d0)*100
+```
+
+**Area under the curve**
+
+Use `MESS::auc` function which calculates the AUC for the weight trajectory, then subtract that from 400 (total area beneath 100% line from 0-4). 
+
+Any weight above 100% would increase the AUC and decrease the area-above-the-curve (so some AACs will be negative).
+
+Metric calculation:
+
+```{r}
+HKU3 <- calc_auc(cross = HKU3, steps = c(0,1,2,3,4), col.name = "weight_aac", 
+                    phenos = c('pd0', 'pd1', 'pd2', 'pd3', 'pd4'))
+```
+
+
+## Exploratory data analysis  
+
+How much weight do HKU3-infected mice lose on average? 
+
+```{r}
+pctloss <- (1-(HKU3$pheno$d4/HKU3$pheno$d0))*100
+mean(pctloss)
+range(pctloss)
+```
+
+Plot weight trajectory: 
+
+```{r}
+wtloss <- cov_trajectory_plot(HKU3, phenos = c('pd0', 'pd1', 'pd2', 'pd3', 'pd4'), 
+                              ylab = "% of starting weight", ylim = c(72,114), 
+                              title = "HKU3-CoV MA",parent.lty=2)
+wtloss
+```
+
+Save plot:
+
+```{r}
+ensure_directory("figures/HKU3")
+png(filename = "figures/HKU3/wt_loss.png", width = 700)
+wtloss + bw_big_theme
+dev.off()
+```
+
+Save for combining with other figures:
+
+```{r}
+wtloss <- wtloss + theme(legend.position = "none") + bw_big_theme 
+ensure_directory("derived_data/otherRobjects")
+saveRDS(wtloss, file = "derived_data/otherRobjects/hku3wtloss.Rdata")
+```
+
+
+### Hemorrhage score
+
+```{r}
+plotPheno(HKU3, pheno.col = 'HS')
+```
+
+Average HS:
+
+```{r}
+mean(HKU3$pheno$HS)
+range(HKU3$pheno$HS)
+median(HKU3$pheno$HS)
+```
+
+Data are normal enough, not transforming 
+
+## Covariate analysis 
+
+```{r}
+anova(aov(d1 ~ d0 + batch + sex, data = HKU3$pheno))
+anova(aov(d2 ~ d0 + batch + sex, data = HKU3$pheno))
+anova(aov(d3 ~ d0 + batch + sex, data = HKU3$pheno))
+anova(aov(d4 ~ d0 + batch + sex, data = HKU3$pheno))
+anova(aov(weight_aac ~ batch + sex, data = HKU3$pheno))
+anova(aov(HS ~ batch + sex, data = HKU3$pheno))
+```
+
+Baseline weight and sex, but not batch, affect outcome. 
+
+## Define covariates 
+
+Covariates: 
+* Sex 
+* Cross direction? Use parent_info.xlsx 
+
+```{r}
+covar <- cbind(as.numeric(pull.pheno(HKU3, "sex") == "M"), 
+               pull.pheno(HKU3, 'd0'))
+names(covar) <- c('sex', 'd0')
+```
+
+
+Get p-value for association with chr9:
+* d2 ~ d0 + sex + chr9 
+* d3 ~ d0 + sex + chr9
+* d4 ~ d0 + sex + chr9
+* aac ~ sex + chr9
+* hs ~ sex + chr9 
+
+These are the peak chr9 markers:
+* S3C094905310 (SARS1: hs)
+* SSH094942479 (SARS2: hs)
+* UNC16977752 (SARS1: d2)
+* S3N094839317 (SARS1: d3, aac; SARS2: d2, aac) <- use this one (most associations)
+* SSH094942479 (SARS1: d4)
+* gUNC17242574 (SARS2: d3)
+
+```{r}
+HKU3 <- fill.geno(HKU3)
+HrS26m <- 'S3N094839317'
+HrS26 <- pull.geno(HKU3, 9)[,HrS26m]
+```
+
+Day 2 weight: 
+
+```{r}
+lmod2 <- lm(d2 ~ d0 + sex + HrS26, HKU3$pheno)
+summary(lmod2)
+```
+
+Day 3 weight:
+
+```{r}
+lmod3 <- lm(d3 ~ d0 + sex + HrS26, HKU3$pheno)
+summary(lmod3)
+```
+
+Day 4 weight:
+
+```{r}
+lmod4 <- lm(d4 ~ d0 + sex + HrS26, HKU3$pheno)
+summary(lmod4)
+```
+
+Weight AAC:
+
+```{r}
+lmodaac <- lm(weight_aac ~ d0 + sex + HrS26, HKU3$pheno)
+summary(lmodaac)
+```
+
+HS:
+
+```{r}
+lmodhs <- lm(HS ~ sex + HrS26, HKU3$pheno)
+summary(lmodhs)
+```
+
+
+## Phenotype-by-genotype plots 
+
+Weight AAC vs chr9 
+
+```{r}
+p <- pxg(cross = HKU3, pheno = HKU3$pheno$weight_aac, marker = HrS26m,
+     geno.map = list(A = "CC006", B = "CC044"), theme = sbs_pxg_theme, 
+     qtl.map = data.frame(chr = c(9), qtl_name = c('HrS43')),
+     title = "HKU3-CoV MA", ylim = c(-20,60))
+```
+
+Save jpeg 
+
+```{r}
+ensure_directory("figures/Fig4")
+jpeg(filename = "figures/Fig4/hku3-HrS26-aac.png", width = 600)
+p
+dev.off()
+```
+
+
+Make Figure 4:
+
+Load PxG from SARS1 and SARS2:
+
+```{r}
+pxg1 <- readRDS(file = "derived_data/otherRobjects/sars1-pxg-Hrs26-aac.Rdata")
+pxg2 <- readRDS(file = "derived_data/otherRobjects/sars2-pxg-Hrs26-aac.Rdata")
+```
+
+```{r}
+png("figures/Fig4/Figure4.png", height = 400, width = 1300)
+plot_grid(pxg1, pxg2, p, align = "h", rel_widths = c(0.35,0.325,0.325),
+          ncol = 3, labels = c('A', 'B', 'C'), label_size = 24)
+dev.off()
+```
+
+
+
+
+
+What QTL from SARS1/SARS2 (other than *HrS43*) are associated with outcome in HKU3-infected mice? 
+
+* *HrS44*: chr7, marker SBT072729469 (SARS-CoV-2) - associated with weight loss (d3: P=0.02, d4: P=0.05, AAC: P=0.02)
+* *HrS45*: chr12, marker gUNC20800862 (SARS-CoV-2) - not associated
+* *HrS46*: chr2, marker SFT021381098 (SARS-CoV) - associated with HS (P=0.03)
+* *HrS47*: chr19, markers SFT190267185 (SARS-CoV) - not associated 
+* *HrS48*: chr15, marker gUNC26048180 (SARS-CoV-2) - not associated 
+* *HrS49*: chr2, marker gUNC020266358 (SARS-CoV-2) - not associated at P<0.05 (some suggestive associations)
+
+*HrS44*
+
+```{r}
+HrS43m <- 'SBT072729469'
+HrS43 <- pull.geno(HKU3, 7)[,HrS43m]
+```
+
+Day 2 weight: 
+
+```{r}
+lmod2 <- lm(d2 ~ d0 + sex + HrS43, HKU3$pheno)
+summary(lmod2)
+```
+
+Day 3 weight:
+
+```{r}
+lmod3 <- lm(d3 ~ d0 + sex + HrS43, HKU3$pheno)
+summary(lmod3)
+```
+
+Day 4 weight:
+
+```{r}
+lmod4 <- lm(d4 ~ d0 + sex + HrS43, HKU3$pheno)
+summary(lmod4)
+```
+
+Weight AAC:
+
+```{r}
+lmodaac <- lm(weight_aac ~ d0 + sex + HrS43, HKU3$pheno)
+summary(lmodaac)
+```
+
+HS:
+
+```{r}
+lmodhs <- lm(HS ~ sex + HrS43, HKU3$pheno)
+summary(lmodhs)
+```
+
+
+
+*HrS45*
+
+```{r}
+HrS44m <- 'gUNC20800862'
+HrS44 <- pull.geno(HKU3, 12)[,HrS44m]
+```
+
+Day 2 weight: 
+
+```{r}
+lmod2 <- lm(d2 ~ d0 + sex + HrS44, HKU3$pheno)
+summary(lmod2)
+```
+
+Day 3 weight:
+
+```{r}
+lmod3 <- lm(d3 ~ d0 + sex + HrS44, HKU3$pheno)
+summary(lmod3)
+```
+
+Day 4 weight:
+
+```{r}
+lmod4 <- lm(d4 ~ d0 + sex + HrS44, HKU3$pheno)
+summary(lmod4)
+```
+
+Weight AAC:
+
+```{r}
+lmodaac <- lm(weight_aac ~ d0 + sex + HrS44, HKU3$pheno)
+summary(lmodaac)
+```
+
+HS:
+
+```{r}
+lmodhs <- lm(HS ~ sex + HrS44, HKU3$pheno)
+summary(lmodhs)
+```
+
+
+
+*HrS46*
+
+```{r}
+HrS45m <- 'SFT021381098'
+HrS45 <- pull.geno(HKU3, 2)[,HrS45m]
+```
+
+Day 2 weight: 
+
+```{r}
+lmod2 <- lm(d2 ~ d0 + sex + HrS45, HKU3$pheno)
+summary(lmod2)
+```
+
+Day 3 weight:
+
+```{r}
+lmod3 <- lm(d3 ~ d0 + sex + HrS45, HKU3$pheno)
+summary(lmod3)
+```
+
+Day 4 weight:
+
+```{r}
+lmod4 <- lm(d4 ~ d0 + sex + HrS45, HKU3$pheno)
+summary(lmod4)
+```
+
+Weight AAC:
+
+```{r}
+lmodaac <- lm(weight_aac ~ d0 + sex + HrS45, HKU3$pheno)
+summary(lmodaac)
+```
+
+HS:
+
+```{r}
+lmodhs <- lm(HS ~ sex + HrS45, HKU3$pheno)
+summary(lmodhs)
+```
+
+
+
+*HrS47* 
+
+```{r}
+HrS46m <- 'SFT190267185'
+HrS46 <- pull.geno(HKU3, 19)[,HrS46m]
+```
+
+Day 2 weight: 
+
+```{r}
+lmod2 <- lm(d2 ~ d0 + sex + HrS46, HKU3$pheno)
+summary(lmod2)
+```
+
+Day 3 weight:
+
+```{r}
+lmod3 <- lm(d3 ~ d0 + sex + HrS46, HKU3$pheno)
+summary(lmod3)
+```
+
+Day 4 weight:
+
+```{r}
+lmod4 <- lm(d4 ~ d0 + sex + HrS46, HKU3$pheno)
+summary(lmod4)
+```
+
+Weight AAC:
+
+```{r}
+lmodaac <- lm(weight_aac ~ d0 + sex + HrS46, HKU3$pheno)
+summary(lmodaac)
+```
+
+HS:
+
+```{r}
+lmodhs <- lm(HS ~ sex + HrS46, HKU3$pheno)
+summary(lmodhs)
+```
+
+
+
+*HrS48* chr15 gUNC26048180
+
+```{r}
+HrS47m <- 'gUNC26048180'
+HrS47 <- pull.geno(HKU3, 15)[,HrS47m]
+```
+
+Day 2 weight: 
+
+```{r}
+lmod2 <- lm(d2 ~ d0 + sex + HrS47, HKU3$pheno)
+summary(lmod2)
+```
+
+Day 3 weight:
+
+```{r}
+lmod3 <- lm(d3 ~ d0 + sex + HrS47, HKU3$pheno)
+summary(lmod3)
+```
+
+Day 4 weight:
+
+```{r}
+lmod4 <- lm(d4 ~ d0 + sex + HrS47, HKU3$pheno)
+summary(lmod4)
+```
+
+Weight AAC:
+
+```{r}
+lmodaac <- lm(weight_aac ~ d0 + sex + HrS47, HKU3$pheno)
+summary(lmodaac)
+```
+
+HS:
+
+```{r}
+lmodhs <- lm(HS ~ sex + HrS47, HKU3$pheno)
+summary(lmodhs)
+```
+
+
+*HrS49*: chr2, marker gUNC020266358
+
+```{r}
+HrS48m <- 'gUNC020266358'
+HrS48 <- pull.geno(HKU3, 2)[,HrS48m]
+```
+
+Day 2 weight: 
+
+```{r}
+lmod2 <- lm(d2 ~ d0 + sex + HrS48, HKU3$pheno)
+summary(lmod2)
+```
+
+Day 3 weight:
+
+```{r}
+lmod3 <- lm(d3 ~ d0 + sex + HrS48, HKU3$pheno)
+summary(lmod3)
+```
+
+Day 4 weight:
+
+```{r}
+lmod4 <- lm(d4 ~ d0 + sex + HrS48, HKU3$pheno)
+summary(lmod4)
+```
+
+Weight AAC:
+
+```{r}
+lmodaac <- lm(weight_aac ~ d0 + sex + HrS48, HKU3$pheno)
+summary(lmodaac)
+```
+
+HS:
+
+```{r}
+lmodhs <- lm(HS ~ sex + HrS48, HKU3$pheno)
+summary(lmodhs)
+```
+
+
+
+
+
+
+## Phenotype x genotype plots for markers at significant LOD peaks 
+
+SARS1 chr2 peak:
+
+```{r}
+geno2 <- pull.geno(HKU3, 2)[,'gUNC2810208']
+lmod <- lm(d3 ~ d0 + geno2, data = HKU3$pheno)
+summary(lmod)
+```
+
+SARS1 chr19 peak:
+
+```{r}
+geno19 <- pull.geno(HKU3, 19)[,'gUNC30160193']
+lmod <- lm(d3 ~ d0 + geno19, data = HKU3$pheno)
+summary(lmod)
+```
+
+SARS2 chr7 peak:
+
+```{r}
+geno7 <- pull.geno(HKU3, 7)[,'SBT072729469']
+lmod <- lm(d3 ~ d0 + geno7, data = HKU3$pheno)
+summary(lmod)
+```
+
+SARS2 chr12 peak:
+
+```{r}
+geno12 <- pull.geno(HKU3, 12)[,'S6R121129283']
+lmod <- lm(d3 ~ d0 + geno12, data = HKU3$pheno)
+summary(lmod)
+```
+
+
+
+PxG plots for poster:
+
+
+
+
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+## Figures 
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+Figures for F31:
+
+```{r}
+pxghku3 <- pxg(cross = HKU3, pheno = HKU3$pheno$X.d3, marker = 'S3N094839317', 
+               geno.map = list(A = "CC006", B = "CC044"), qtl.map = NULL, xlab = "", 
+               ylab = "", ylim = c(77,108), title = "HKU3-CoV", bestfit = TRUE, 
+               theme = pub_theme2)
+
+pxghku3
+
+save(pxghku3, file = 'figures/HKU3/pxg/forF31.Rdata')
+
+png('figures/HKU3/pxg/forF31.png', width = 560)
+pxghku3
+dev.off()
+```
+
+
+All three plots:
+
+```{r}
+load('figures/SARS1/pxg/forF31.Rdata')
+load('figures/SARS2/pxg/forF31.Rdata')
+
+ggarrange(pxgsars1, pxgsars2, pxghku3, ncol = 3, )
+```
+
+
+
+```{r}
+lmod <- lm(trint(HKU3$pheno$X.d3) ~ pull.geno(HKU3, chr = 9)[,'S3N094839317'])
+```
+
+
+
+

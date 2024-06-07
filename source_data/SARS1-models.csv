@@ -1,0 +1,7 @@
+﻿obj,perm.obj,type,colname,cov,name,abbr
+hs,hsp,np,HS,"batch,sex",Lung hemorrhage score,Lung HS
+d1,d1p,normal,d1,"d0,batch,sex",Weight - day 1,Weight - day 1
+d2,d2p,normal,d2,"d0,batch,sex",Weight - day 2,Weight - day 2
+d3,d3p,normal,d3,"d0,batch,sex",Weight - day 3,Weight - day 3
+d4,d4p,normal,d4,"d0,batch,sex",Weight - day 4,Weight - day 4
+aac,aacp,normal,weight_aac,"batch,sex",Weight (area above the curve),Weight - AAC

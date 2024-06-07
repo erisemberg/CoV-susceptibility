@@ -1,0 +1,782 @@
+---
+title: "Rqtl_SARS-CoV-1"
+author: "Ellen Risemberg"
+date: "9/14/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/Users/ellenrisemberg/Documents/ValdarFerris/Coronavirus/virus-research")
+```
+
+## Environment setup 
+
+```{r message=FALSE, warning=FALSE}
+library(knitr)
+library(qtl)
+library(qtl2)
+library(MESS)
+library(MASS)
+library(glmnet)
+library(readxl)
+library(RColorBrewer)
+library(pzfx)
+# devtools::install_github("wesleycrouse/bmediatR", build_vignettes = TRUE)
+library(ggplot2)
+library(scales)
+source('/Users/ellenrisemberg/Documents/ValdarFerris/scripts/qtl_functions.R')
+source('/Users/ellenrisemberg/Documents/ValdarFerris/scripts/plot_noX.R')
+```
+
+Load ggplot themes:
+
+```{r}
+load_themes()
+```
+
+## Load data 
+
+```{r}
+SARS <- read.cross(format="csv", file='derived_data/rqtl_files/SARS1_CC006xCC044_rqtl.csv', 
+                   na.strings=c("-","NA", "not tested"), genotypes=c("AA","AB","BB"), 
+                   alleles=c("A","B")) # A = CC006, B = CC044
+SARS <- jittermap(SARS)
+summary(SARS)
+plotMap(SARS) 
+
+SARS$pheno$batch <- as.factor(SARS$pheno$batch) # change batch to factor
+```
+
+Genetic map statistics:
+
+```{r}
+SARSv2 <- convert2cross2(SARS) # convert to Rqtl2 cross 
+find_map_gaps(SARSv2$gmap, min_gap=10)
+```
+
+Median physical distance in Mbp:
+
+```{r distance}
+alldistances <- vector()
+  
+for (i in 1:length(SARSv2$gmap)){
+  positions <- SARSv2$gmap[[i]]
+  distances <- positions[2:length(positions)] - positions[1:(length(positions)-1)]
+  
+  alldistances <- append(alldistances, distances)
+}
+
+median(alldistances)
+```
+
+Genetic map for poster:
+
+```{r}
+# jpeg(filename = "/Users/ellenrisemberg/Documents/ValdarFerris/conferences/WinS/genetic_map.jpeg", width = 650)
+# plotMap(SARS2, main = "", ylab = "", xlab = "")
+# title(ylab = "Location (cM)", cex.lab = 1.5, line = 2.5)
+# title(xlab = "Chromosome", cex.lab = 1.5)
+# title(main = "Genetic map", cex.main = 1.8)
+# dev.off()
+```
+
+
+## Calculate derived measures
+
+**Calculate percentage of starting weight**
+
+```{r}
+SARS$pheno$pd0 <- 100
+SARS$pheno$pd1 <- (SARS$pheno$d1/SARS$pheno$d0)*100
+SARS$pheno$pd2 <- (SARS$pheno$d2/SARS$pheno$d0)*100
+SARS$pheno$pd3 <- (SARS$pheno$d3/SARS$pheno$d0)*100
+SARS$pheno$pd4 <- (SARS$pheno$d4/SARS$pheno$d0)*100
+```
+
+**Area under the curve**
+
+Use `MESS::auc` function which calculates the AUC for the weight trajectory, then subtract that from 400 (total area beneath 100% line from 0-4). Any weight above 100% would increase the AUC and decrease the area-above-the-curve (so some AACs will be negative).
+
+Example: 
+
+```{r}
+plot(c(0,1,2,3,4), SARS$pheno[1,c('pd0', 'pd1', 'pd2', 'pd3', 'pd4')], 
+     xlab = "Day post-infection", ylab = "% of starting weight")
+lines(c(0,1,2,3,4), SARS$pheno[1,c('pd0', 'pd1', 'pd2', 'pd3', 'pd4')])
+abline(h=100)
+```
+
+Metric calculation:
+
+```{r}
+SARS <- calc_auc(cross = SARS, steps = c(0,1,2,3,4), col.name = "weight_aac", 
+                 phenos = c('pd0', 'pd1', 'pd2', 'pd3', 'pd4'))
+```
+
+
+## Exploratory data analysis 
+
+How much weight do SARS-infected mice lose on average? 
+
+```{r}
+pctloss <- (1-(SARS$pheno$d4/SARS$pheno$d0))*100
+mean(pctloss)
+range(pctloss)
+```
+
+Plot weight trajectory with CC044 and CC006 avg trajectory: 
+
+```{r}
+wtloss <- cov_trajectory_plot(SARS, phenos = c('pd0', 'pd1', 'pd2', 'pd3', 'pd4'), 
+                              title = "SARS-CoV MA15", ylab = "% of starting weight", ylim = c(72,114))
+wtloss
+```
+
+Save plot:
+
+```{r}
+ensure_directory("figures")
+ensure_directory("Figures/SARS1")
+png(filename = "figures/SARS1/wt_loss.png", width = 700)
+wtloss + bw_big_theme
+dev.off()
+```
+
+Save for combining with other figures:
+
+```{r}
+wtloss <- wtloss + theme(legend.position = "none") + bw_big_theme
+ensure_directory("derived_data/otherRobjects")
+saveRDS(wtloss, file = "derived_data/otherRobjects/sars1wtloss.Rdata")
+```
+
+
+
+### Hemorrhage score
+
+Average HS:
+
+```{r}
+mean(SARS$pheno$HS)
+range(SARS$pheno$HS)
+median(SARS$pheno$HS)
+```
+
+
+```{r}
+plotPheno(SARS, pheno.col = 'HS')
+```
+
+
+## Load model info table
+
+```{r}
+models <- read.csv("source_data/SARS1-models.csv", na.strings = "")
+```
+
+## Transform data 
+
+Before transforming data, save raw phenotypes for plotting later:
+
+```{r}
+raw_phenos <- SARS$pheno
+```
+
+Log-transform weight on d1-d4, don't transform AAC (already normal) or HS (categorical). 
+
+```{r}
+SARS$pheno$d1 <- log(SARS$pheno$d1)
+SARS$pheno$d2 <- log(SARS$pheno$d2)
+SARS$pheno$d3 <- log(SARS$pheno$d3)
+SARS$pheno$d4 <- log(SARS$pheno$d4)
+``` 
+
+## Covariate analysis 
+
+anova test - which of the covariates/interactions have a significant effect?
+
+```{r}
+anova(aov(d1 ~ d0 + batch + sex, data = SARS$pheno))
+anova(aov(d2 ~ d0 + batch + sex, data = SARS$pheno))
+anova(aov(d3 ~ d0 + batch + sex, data = SARS$pheno))
+anova(aov(d4 ~ d0 + batch + sex, data = SARS$pheno))
+anova(aov(weight_aac ~ batch + sex, data = SARS$pheno))
+anova(aov(HS ~ batch + sex, data = SARS$pheno))
+```
+
+Sex, batch and baseline weight all affect our phenotypes (batch and sex only for AAC and HS).
+
+## Define covariates 
+
+Covariates: 
+* Sex 
+* Batch (as string)
+* Cross direction? Use parent_info.xlsx 
+
+There are eight batches - probably don't need to model as a random effect? 
+
+```{r}
+covar <- cbind(as.numeric(pull.pheno(SARS, "sex") == "M"), 
+               pull.pheno(SARS, "batch"),
+               pull.pheno(SARS, 'd0'))
+colnames(covar) <- c('sex', 'batch', 'd0')
+```
+
+
+
+--------------------------------------------------------------------------------
+# Single-QTL Analysis 
+--------------------------------------------------------------------------------
+
+First, run `calc.genoprob()`:
+
+```{r}
+SARS <- calc.genoprob(SARS)
+```
+
+`models` dataframe has the following info about each phenotype:
+* `obj`: name of `scanone` object 
+* `perm.obj`: name of `scanoneperm` object 
+* `type`: model type (normal, np, 2-part)
+* `colname`: column name in input spreadsheet 
+* `name`: name for genome scan title
+* `abbr`: name for axis labels 
+
+Model types:
+* Lung HS: nonparametric model (categorical variable)
+* Weight loss (% weight lost): normal model 
+* Weight loss (derived measures): normal model 
+
+```{r}
+kable(models)
+```
+
+Create models (covariates will be ignored for non-parametric and two-part model):
+
+```{r}
+ensure_directory("derived_data/SARS1")
+ensure_directory("derived_data/SARS1/mods")
+create_models(cross.obj = SARS, models = models, covar = covar, mod.dir = "derived_data/SARS1/mods/")
+```
+
+Create permutations: 
+
+```{r}
+ensure_directory("derived_data/SARS1/perms")
+create_perms(cross.obj = SARS, models = models, perm.dir = "derived_data/SARS1/perms/", perm.Xsp = TRUE)
+```
+
+
+Plot genome scans: 
+
+```{r}
+# ylim <- c(0,8.3)
+# plot_scans(models = models, ylim = ylim)
+plot_scans(models = models)
+```
+
+
+Save genome scans:
+
+```{r}
+ensure_directory("figures")
+ensure_directory("figures/SARS1")
+ensure_directory("figures/SARS1/scans")
+plot_scans(models, save = TRUE, save.dir = 'figures/SARS1/scans/')
+
+ensure_directory('figures/SARS1/scans/same_ylim/')
+plot_scans(models, save = TRUE, ylim = c(0,6.5), save.dir = 'figures/SARS1/scans/same_ylim/')
+```
+
+
+HS scan with modified x-axis:
+
+```{r}
+# png('figures/SARS1/scans/hs_modX.png', width = 750)
+# plot_modX(hs, alternate.chrid = TRUE, xlab = "", ylab = "", main = "Hemorrhage score", 
+#           cex.main = 2, cex.axis = 2, bandcol = "gray90", ylim = c(0, 6.5))
+# title(ylab = "LOD", line = 2.5, cex.lab = 2)
+# title(xlab = "Chromosome", cex.lab = 2.3, line = 3.7) # cex.lab was 2
+# abline(h = summary(hspA.gev), lty=1:2)
+# dev.off()
+```
+
+
+
+
+--------------------------------------------------------------------------------
+# Significant QTLs 
+--------------------------------------------------------------------------------
+
+
+Calculate 95% Bayes credible intervals for significant LOD peaks, and create a summary table with data for each LOD peak: marker, chromosome, position, LOD and positions of Bayes credible intervals.
+
+```{r}
+peaks <- doc_peaks(models, sig.level = 0.10)
+kable(peaks)
+```
+
+### Table for manuscript 
+
+Turn into tibble for easier processing:
+
+```{r}
+peakstbl <- as_tibble(peaks) %>% arrange(factor(chr, levels = c('9', '2', '19')))
+```
+
+
+### Adjusted P-values
+
+```{r message=FALSE}
+peakstbl$adj_pval <- rep(NA, nrow(peakstbl))
+
+for (i in 1:nrow(peakstbl)){
+  modname <- peakstbl$model[i]
+  #permname <- models$perm.obj[which(models$obj == modname)]
+  chr <- peakstbl$chr[i]
+  
+  ### THIS NEEDS TO HANDLE X PERMS TOO - BUT NOT WORRYING ABOUT IT NOW BC NO X-CHR QTL 
+  gevname <- paste0(models$perm.obj[which(models$obj == modname)], 'A.gev')
+  fitgev.sum <- summary.fevd(get(gevname))
+  
+  p <- pevd(q = as.numeric(peakstbl$lod[i]), 
+            loc = fitgev.sum$par[1], 
+            scale = fitgev.sum$par[2], 
+            shape = fitgev.sum$par[3], 
+            lower.tail = FALSE)
+  
+  # p <- mean(get(permname) > summary(get(modname))[as.integer(chr),'lod'])
+  
+  peakstbl$adj_pval[i] <- p
+}
+
+
+peakstbl$adj_pval <- trimws(format(peakstbl$adj_pval, digits=2))
+peakstbl$adj_pval <- as.numeric(format(peakstbl$adj_pval, digits = 3))
+```
+
+
+### Genomic location 
+
+Create chr:position(interval) column. First, split up bayes CI column into lower and upper limit. Then concatenate various data to produce column:
+
+```{r}
+peakstbl$BayesCIlower <- rep(NA, nrow(peakstbl))
+peakstbl$BayesCIupper <- rep(NA, nrow(peakstbl))
+
+for (i in 1:nrow(peakstbl)){
+  peakstbl$BayesCIlower[i] <- strsplit(peakstbl$`Bayes CI`[i], split = ' - ')[[1]][1]
+  peakstbl$BayesCIupper[i] <- strsplit(peakstbl$`Bayes CI`[i], split = ' - ')[[1]][2]
+}
+
+# Then concatenate  
+peakstbl$chrint <- paste0(rep('Chr ',nrow(peakstbl)), 
+                 peakstbl$chr, 
+                 rep(': ',nrow(peakstbl)),
+                 trimws(format(round(as.double(peakstbl$pos), 2), nsmall=2)),
+                 rep(' (',nrow(peakstbl)),
+                 trimws(format(round(as.double(peakstbl$BayesCIlower), 2), nsmall=2)),
+                 rep('-',nrow(peakstbl)),
+                 trimws(format(round(as.double(peakstbl$BayesCIupper), 2), nsmall=2)),
+                 rep(')',nrow(peakstbl)))
+```
+
+Use phenotype name instead of model name: 
+
+```{r}
+peakstbl$Phenotype <- models$name[match(peakstbl$model, models$obj)]
+```
+
+
+### Unadjusted P-values 
+
+```{r}
+peakstbl$unadj_pval <- rep(NA, nrow(peakstbl))
+
+for (i in 1:nrow(peakstbl)){
+  marker = peakstbl$marker[i]
+  mod = peakstbl$model[i]
+  pheno.col = models$colname[models$obj == mod]
+  covar <- models$cov[models$obj == mod]
+  if (covar == "") {covar <- NULL}
+  
+  unadj.pval <- get_unadj_pval(SARS, pheno.col, marker, covar)
+  peakstbl$unadj_pval[i] <- unadj.pval
+}
+
+peakstbl$unadj_pval <- format(peakstbl$unadj_pval, digits = 3)
+```
+
+
+### QTL names 
+
+```{r}
+peakstbl$QTL <- rep(NA, nrow(peakstbl))
+
+qtl_pheno_counts <- peakstbl %>% group_by(chr) %>% dplyr::summarize(n = n())
+
+peakstbl$QTL <- c(rep('HrS43', qtl_pheno_counts$n[qtl_pheno_counts$chr==9]),
+                  rep('HrS46', qtl_pheno_counts$n[qtl_pheno_counts$chr==2]), 
+                  rep('HrS47', qtl_pheno_counts$n[qtl_pheno_counts$chr==19]))
+```
+
+
+### Phenotypic variance explained
+
+
+AKA heritability due to a QTL. Using formula (described in Rqtl guide pg 122)
+
+$$h^2 = \frac{\text{var}\{E(y|g\}}{\text{var}\{y\}}$$
+
+For F2 cross: 
+
+$$h^2 = \frac{2a^2 + d^2}{2a^2 + d^2+4\sigma^2}$$
+
+where $a = \mu_{BB} - \mu_{AA}/2$, $d=\mu_{AB} - (\mu_{AA}+\mu_{BB})/2$, and $\sigma^2$ is the residual variance. 
+
+```{r}
+peakstbl$phenotypic.var.expl <- rep(NA, nrow(peakstbl))
+
+for (i in 1:nrow(peakstbl)){
+  marker = peakstbl$marker[i]
+  mod = peakstbl$model[i]
+  pheno.col = models$colname[models$obj == mod]
+  covar <- models$cov[models$obj == mod]
+  if (covar == "") {covar <- NULL}
+  
+  h2 <- get_var_expl(SARS, pheno.col, marker, covar)
+  
+  peakstbl$phenotypic.var.expl[i] <- h2
+}
+
+peakstbl$phenotypic.var.expl <- paste0(as.numeric(format(peakstbl$phenotypic.var.expl, digits=3))*100, '%')
+```
+
+
+
+### Analysis done, format and print
+
+Remove redundant data, re-order: 
+
+```{r}
+table1 <- peakstbl %>% 
+  arrange(match(chr, c('9', '2', '19')), as.numeric(adj_pval))
+
+# now that it's sorted by adjusted p-value, add */**/*** (makes it a string so can't sort)
+table1$adj_pval <- paste(table1$adj_pval, ifelse(table1$adj_pval < 0.005, '(***)', ifelse(table1$adj_pval < 0.05, '(**)', ifelse(table1$adj_pval < 0.10, '(*)', NA))))
+
+col_order <- c('QTL', 'Phenotype', 'chrint', 'adj_pval', 'phenotypic.var.expl')
+table1 <- table1[,col_order]
+```
+
+Save to csv: 
+
+```{r}
+ensure_directory("results")
+write.csv(table1, file = "results/SARS1-QTLsummary.csv", row.names = FALSE)
+```
+
+
+
+
+## Phenotype x genotype plots for markers at significant LOD peaks 
+
+Name QTLs for PxG plotting
+
+```{r}
+qtl.map <- data.frame(chr = c(9, 2, 19), 
+                      qtl_name = c('HrS43', 'HrS46', 'HrS47'))
+```
+
+Print all pxg plots: 
+
+```{r}
+plot_pxg(cross.obj = SARS, cross.type = 'f2', raw.data = raw_phenos,
+         geno.map = list(A = "CC006", B = "CC044"), qtl.map = qtl.map,
+         peaks = peaks, plot.type = 'pxg', theme = rmd_theme)
+```
+
+Save PxG plots:
+
+```{r}
+ensure_directory("figures/SARS1/pxg")
+plot_pxg(SARS, cross.type = 'f2', raw.data = raw_phenos, 
+         geno.map = list(A = "CC006", B = "CC044"), qtl.map = qtl.map, 
+         peaks = peaks, plot.type = 'pxg', theme = rmd_theme, save = TRUE, 
+         save.dir = 'figures/SARS1/pxg/')
+```
+
+PxG plot for Figure 4:
+
+```{r}
+HrS26m <- 'S3N094839317'
+p <- pxg(cross = SARS, pheno = SARS$pheno$weight_aac, marker = HrS26m,
+         qtl.map = qtl.map, geno.map = list(A = "CC006", B = "CC044"), 
+         theme = sbs_pxg_theme, title = "SARS-CoV MA15", ylab = "Weight loss (AAC)", 
+         ylim = c(-20,60))
+```
+
+Save plot:
+
+```{r}
+ensure_directory("figures/Fig4")
+png("figures/Fig4/sars1-Hrs26-aac.png", width = 600)
+p
+dev.off()
+```
+
+Save R object for combining with other plots:
+
+```{r}
+saveRDS(p, file = "derived_data/otherRobjects/sars1-pxg-Hrs26-aac.Rdata")
+```
+
+
+
+
+
+
+
+
+
+## MULTIPLE QTL ANALYSIS
+
+
+Are chr2, chr19 significant after controlling for chr9?
+
+```{r}
+geno2 <- pull.geno(SARS, 2)[,'gUNC2810208']
+geno9 <- pull.geno(SARS, 9)[,'S3N094839317']
+geno19 <- pull.geno(SARS, 19)[,'gUNC30234572']
+
+# significant on their own:
+lmod <- lm(d4 ~ d0 + geno2, data = SARS$pheno)
+summary(lmod)
+
+lmod2 <- lm(d4 ~ d0 + geno9, data = SARS$pheno)
+summary(lmod2)
+
+lmod3 <- lm(d4 ~ d0 + geno19, data = SARS$pheno)
+summary(lmod3)
+
+# significant together: 
+lmodfull <- lm(d4 ~ d0 + geno9 + geno2 + geno19, data = SARS$pheno)
+summary(lmodfull)
+```
+
+
+
+
+
+
+
+For F31: are any of these peaks not significant when only looking at the additive term?
+
+```{r}
+cross <- calc.dosage(SARS)
+geno2 <- cross$geno[[2]]$dos[,'SAJ027219010'] # dosage of B allele 
+het_geno <- cross$geno[[2]]$prob[,'SAJ027219010',2] # probability of AB genotype
+
+# additive model 
+fit <- lm(SARS$pheno$pctNeuofCD45 ~ geno2)
+t <- summary(fit)$coefficients['geno2','t value']
+Fval <- t^2
+df <- 2 # (in backcross, 2 in f2)
+n = nrow(cross$pheno)
+lod <- (n/2)*log10(Fval*(df/(n-df-1)) + 1)
+.0
+# genotype model 
+fit2 <- lm(SARS$pheno$pctNeuofCD45 ~ geno2 + het_geno)
+Fval <- summary(fit2)$fstatistic['value']
+lod <- (n/2)*log10(Fval*(df/(n-df-1)) + 1)
+```
+
+
+
+
+
+
+
+
+
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+## Figures 
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+Figures for F31:
+
+```{r}
+pxgsars1 <- pxg(cross = SARS, pheno = raw_phenos$X.d3, marker = 'S3N094839317', geno.map = list(A = "CC006", B = "CC044"), qtl.map = qtl.map, xlab = "", ylab = "% Starting Weight - Day 3", ylim = c(77,108), title = "SARS-CoV-1", bestfit = TRUE, theme = pub_theme2)
+
+pxgsars1
+
+save(pxgsars1, file = 'figures/SARS1/pxg/forF31.Rdata')
+
+png('figures/SARS1/pxg/forF31.png', width = 560)
+pxgsars1
+dev.off()
+```
+
+
+For F31 figure 4: 
+
+```{r}
+#source('/Users/ellenrisemberg/Documents/ValdarFerris/scripts/plot_noX.R')
+# png('figures/F31/infection_infmonos.png', width=700)
+# plot_modX(pctLy6CposMofCD45, ylab = "", xlab = "", main = "", alternate.chrid = T, cex.axis=1.5, ylim=c(0,6.5))
+# title(ylab = "LOD", line = 2.3, cex.lab = 2)
+# abline(h = summary(pctLy6CnegMofCD45.perm)$A[2], lty=2)
+# dev.off()
+#title(xlab = "Chromosome", cex.lab = 2, line = 3)
+
+# png('figures/F31/infection_pDCs.png', width=700)
+# plot_modX(pctpDCofCD45, ylab = "", xlab = "", main = "", alternate.chrid = T, cex.axis=1.5, yaxt="n", ylim=c(0,6.5))
+# #title(ylab = "LOD", line = 2.3, cex.lab = 2)
+# abline(h = summary(pctpDCofCD45.perm)$A[2], lty=2)
+# dev.off()
+#title(xlab = "Chromosome", cex.lab = 2, line = 3)
+```
+
+
+NK T-cells: 
+
+```{r}
+# jpeg("figures/SARS1/scans/NKTcells.jpeg", width = 600)
+# plot(pctNKTofCD45, ylab = "", main = "Natural Killer T-cells / Lymphocytes (SARS-CoV-1)", alternate.chrid = T, bandcol = "gray90", cex.lab = 1.5, cex.axis = 1.5, cex.main = 1.8, cex.sub = 1.5, ylim = c(0,6))
+# title(ylab = "LOD", cex.lab = 1.5, line = 2)
+# abline(h = c(summary(pctNKTofCD45.perm)[[1]][1], summary(pctNKTofCD45.perm)[[1]][2]), lty = 1:2, lwd = 2)
+# dev.off()
+```
+
+Weight loss (AUC):
+
+```{r}
+# jpeg("figures/SARS1/wtAUC_scan.jpeg", width = 700)
+# plot(wt_AUC, ylab = "", main = "Weight Loss (AUC)", alternate.chrid = T, bandcol = "gray90", cex.lab = 1.5, cex.axis = 1.5, cex.main = 1.8, cex.sub = 1.5, ylim = c(0,6))
+# title(ylab = "LOD", cex.lab = 1.5, line = 2)
+# abline(h = c(summary(wt_AUCperm)[[1]][1], summary(wt_AUCperm)[[1]][2]), lty = 1:2, lwd = 2)
+# dev.off()
+```
+
+Lung hemorrhage score 
+
+```{r}
+# jpeg("figures/SARS1/HSperm_scan.jpeg", width = 600)
+# plot(HS, ylab = "", main = "Lung hemorrhage score (SARS-CoV-1)", alternate.chrid = T, bandcol = "gray90", cex.lab = 1.5, cex.axis = 1.5, cex.main = 1.8, cex.sub = 1.5, ylim = c(0,6))
+# title(ylab = "LOD", cex.lab = 1.5, line = 2)
+# abline(h = c(summary(HSperm)[[1]][1], summary(HSperm)[[1]][2]), lty=1:2, lwd = 2)
+# dev.off()
+```
+
+weight loss day 3 genome scan:
+
+```{r}
+jpeg("figures/SARS1/scans/pctD3.jpeg", width = 700)
+
+plot(pD3, main = "Weight Loss - Day 3 (SARS-CoV-1)", alternate.chrid = T, bandcol = "gray90", cex.lab=2, cex.axis=1.5, cex.main=1.8, ylab="", ylim = c(0, 8.5))
+title(ylab="LOD", line = 2, cex.lab=2)
+
+sum <- summary(pD3perm)
+abline(h = c(sum[[1]][1], sum[[1]][2]), lty=1:2)
+
+dev.off()
+```
+
+Ly6C+ genome scan:
+
+```{r}
+jpeg("figures/SARS1/scans/InfMonos.jpeg", width = 700)
+
+plot(pctLy6CposMofCD45, main = "Inflammatory Monocytes (SARS-CoV-1)", alternate.chrid = T, bandcol = "gray90", cex.lab=2, cex.axis=1.5, cex.main=1.8, ylab="", ylim=c(0,7))
+title(ylab="LOD", line = 2, cex.lab=2)
+
+sum <- summary(pctLy6CposMofCD45.perm)
+abline(h = c(sum[[1]][1], sum[[1]][2]), lty=1:2)
+
+dev.off()
+```
+
+pD3 PxG plot:
+
+```{r}
+jpeg("figures/SARS1/pxg/pxg_chr9_pD3.jpeg", width=600)
+
+pxg(SARS, pheno = raw_phenos[,'X.d3'], marker = 'S3N094839317',
+    geno.map = list(A = "CC006", B = "CC044"), qtl.map = qtl.map, 
+    xlab = "Genotype (chr9 QTL marker)", ylab = "% Starting wt d3", 
+    title = NULL, theme = big_theme, type = 'scatter')
+
+dev.off()
+```
+
+
+Ly6C+/chr 15 PxG plot:
+
+```{r}
+jpeg("figures/SARS1/pxg/pxg_chr15_Ly6C+monos.jpeg", width=600)
+
+pxg(SARS, pheno = raw_phenos[,'Ly6C.M_pctofCD45'], marker = 'mUNC25899852', qtl.map = qtl.map,
+    geno.map = list(A = "CC006", B = "CC044"), xlab = "Genotype (chr15 peak marker)", 
+    ylab = "% Ly6C+ mono of lymphocytes", title = NULL, theme = big_theme)
+
+dev.off()
+```
+
+Ly6C+ / chr16 PxG plot:
+
+```{r}
+jpeg("figures/SARS1/pxg/chr16_InfMonos_raw.jpeg", width=600)
+
+pxg(SARS, pheno = raw_phenos[,'Ly6C.M_pctofCD45'], qtl.map = qtl.map,  
+    marker = 'mbackupUNC160158316', geno.map = list(A = "CC006", B = "CC044"), 
+    xlab = "Genotype (chr16 QTL marker)", ylab = "Inflammatory monocytes", 
+    title = "", theme = big_theme)
+
+dev.off()
+
+jpeg("figures/SARS1/pxg/chr16_InfMonos.jpeg", width=600)
+
+pxg(SARS, pheno = pull.pheno(SARS, 'Ly6C.M_pctofCD45'), qtl.map = qtl.map,  
+    marker = 'mbackupUNC160158316', geno.map = list(A = "CC006", B = "CC044"), 
+    xlab = "Genotype (chr16 QTL marker)", ylab = "Inflammatory monocytes", 
+    title = "", theme = big_theme)
+
+dev.off()
+```
+
+pDC genome scan:
+
+```{r}
+jpeg("figures/SARS1/scans/pDCs_qtl.jpeg", width = 600)
+
+plot(pctpDCofCD45, main = "% Plasmacytoid Dendritic Cells of Lymphocytes", ylab="",
+     alternate.chrid = T, bandcol = "gray90", cex.lab=2, cex.axis=1.5, cex.main=1.8)
+title(ylab="LOD", line = 2, cex.lab=2)
+
+sum <- summary(pctpDCofCD45.perm)
+abline(h = c(sum[[1]][1], sum[[1]][2]), lty=1:2)
+
+dev.off()
+```
+
+pDC PxG plot:
+
+```{r}
+jpeg("figures/SARS1/pxg/pxg_chr15_pDCs.jpeg", width=600)
+
+pxg(SARS, pheno = raw_phenos[,'pDC_pctofCD45'], marker = 'mUNC25869929', qtl.map = qtl.map, 
+    geno.map = list(A = "CC006", B = "CC044"), xlab = "Genotype (chr15 peak marker)", 
+    ylab = "% pDCs of Lymphocytes", title = "", theme = big_theme)
+
+dev.off()
+```
+
+
+
+
