@@ -34,9 +34,9 @@ Run the following code to produce a file in the format required by R/qtl.
 
 ```
 mkdir -p derived_data/rqtl_files
-Rscript rqtl_file_proc.R -virus SARS-CoV
-Rscript rqtl_file_proc.R -virus SARS2-CoV
-Rscript rqtl_file_proc.R -virus HKU3-CoV
+Rscript rqtl_file_proc.R --args --virus=SARS-CoV
+Rscript rqtl_file_proc.R --args --virus=SARS2-CoV
+Rscript rqtl_file_proc.R --args --virus=HKU3-CoV
 ```
 These commands will generate the following .csv files, which can be imported into R and analyzed using the `Rqtl` package: 
 * `derived_data/rqtl_files/SARS1_CC006xCC044_rqtl.csv` 
@@ -47,8 +47,22 @@ These commands will generate the following .csv files, which can be imported int
 Inbred parent analysis 
 -----------------------
 
+Run the following code to analyze data from the initial and repeated Collaborative Cross screens and generate plots that comprise Figure 1. 
+
+```
+Rscript parent-analysis.R
+```
+
+Several plots will be produced in `figures/`.
+
 Intercross analysis
 -----------------------
+
+Run the following code to perform QTL mapping in each infection group and produce a PDF of results. 
+
+```
+
+```
 
 Candidate gene analysis
 -----------------------
