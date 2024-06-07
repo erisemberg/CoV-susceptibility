@@ -125,7 +125,8 @@ geno <- geno[which(geno$het_all != 1),]
 log(paste("After removing markers with all het calls: ", nrow(geno), sep=""))
 
 # Plot x = ref/(ref+alt) and y = het/(ref+alt+het)
-png("marker_qc_plot.png")
+ensure_directory("figures")
+png("figures/marker_qc_plot.png")
 plot(x=geno$het_all, y=geno$ref_alt, main="Autosome/X markers", 
      ylab="Ref/(Ref + Alt)", xlab="Het/(Het + Ref + Alt)")
 dev.off()

@@ -8,7 +8,7 @@ library(extRemes)
 library(RColorBrewer)
 library(tidyverse)
 library(snow)
-source("/code-dependencies/lmmultiresponse.R")
+source("code-dependencies/lmmultiresponse.R")
 
 
 #-------------------------------Miscellaneous----------------------------------#
@@ -179,9 +179,9 @@ load_themes <- function(){
                              legend.key = element_rect(fill = "white"),
                              panel.background = element_rect(fill = "white",
                                                              colour = "white"),
-                             panel.border = element_rect(colour = "lightgray", fill = NA, linewidth = 1),
-                             panel.grid.major = element_line(colour = "lightgray", linewidth=0.25),
-                             panel.grid.minor = element_line(colour = "lightgray", linewidth=0.1))
+                             panel.border = element_rect(colour = "lightgray", fill = NA, size = 1),
+                             panel.grid.major = element_line(colour = "lightgray", size = 0.25),
+                             panel.grid.minor = element_line(colour = "lightgray", size = 0.1))
   
   # Slightly bigger text
   bw_big_theme <<- theme(axis.title = element_text(size = 22), 
@@ -192,9 +192,9 @@ load_themes <- function(){
                          legend.key = element_rect(fill = "white"),
                          panel.background = element_rect(fill = "white",
                                                          colour = "white"),
-                         panel.border = element_rect(colour = "lightgray", fill = NA, linewidth = 1),
-                         panel.grid.major = element_line(colour = "lightgray", linewidth=0.25),
-                         panel.grid.minor = element_line(colour = "lightgray", linewidth=0.1))
+                         panel.border = element_rect(colour = "lightgray", fill = NA, size = 1),
+                         panel.grid.major = element_line(colour = "lightgray", size = 0.25),
+                         panel.grid.minor = element_line(colour = "lightgray", size = 0.1))
   
   # For things needing big text but smaller x-axis labels   
   # (like HS and titer plots with x-axis = strain)
@@ -215,9 +215,9 @@ load_themes <- function(){
                        legend.key = element_rect(fill = "white"),
                        panel.background = element_rect(fill = "white",
                                                        colour = "white"),
-                       panel.border = element_rect(colour = "lightgray", fill = NA, linewidth = 1),
-                       panel.grid.major = element_line(colour = "lightgray", linewidth=0.25),
-                       panel.grid.minor = element_line(colour = "lightgray", linewidth=0.1))
+                       panel.border = element_rect(colour = "lightgray", fill = NA, size = 1),
+                       panel.grid.major = element_line(colour = "lightgray", size = 0.25),
+                       panel.grid.minor = element_line(colour = "lightgray", size = 0.1))
   
   # side-by-side PxG theme 
   sbs_pxg_theme <<- theme(plot.title = element_text(size = 26),

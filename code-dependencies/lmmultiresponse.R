@@ -1,4 +1,4 @@
-source('/Users/ellenrisemberg/Documents/ValdarFerris/scripts/WVmisc/R/WVmisc.R')
+source('code-dependencies/WVmisc.R')
 
 SS<-function(x)
 {
