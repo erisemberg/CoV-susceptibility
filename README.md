@@ -1,6 +1,6 @@
 ## Sarbecovirus disease susceptibility is conserved across viral and host models 
 
-This document describes how to reproduce analyses in [this manuscript](10.1016/j.virusres.2024.199399). 
+This document describes how to reproduce analyses in this manuscript: 10.1016/j.virusres.2024.199399
 
 Environment prep
 -----------------------
