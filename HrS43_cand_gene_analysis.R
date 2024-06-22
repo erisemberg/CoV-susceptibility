@@ -1,9 +1,7 @@
 library(readr)
 suppressMessages(library(tidyverse))
 library(stringi)
-source('/Users/ellenrisemberg/Documents/ValdarFerris/scripts/qtl_functions.R')
-
-setwd("/Users/ellenrisemberg/Documents/ValdarFerris/Coronavirus/virus-research")
+source('code-dependencies/qtl_functions.R')
 
 pc_var_types <- c('missense_variant', 'splice_region_variant', 'stop_gained',
                   'stop_lost', 'splice_donor_variant', 'splice_acceptor_variant',
@@ -20,24 +18,20 @@ reg_var_types <- c('downstream_gene_variant', 'intron_variant', 'upstream_gene_v
 
 #-------------------------------CC006xCC044------------------------------------#
 # read VCFs 
-#vcf644_1 <- read.csv(file = "source_data/chr9-variants/sanger.founders.CC006xCC044.chr9.89.54-96Mb.NZO_HlLtJ.NOD_ShiLtJ.genes.csv")
-vcf644_2 <- read.csv(file = "source_data/chr9-variants/sanger.founders.CC006xCC044.chr9.98.92-110Mb.129S1_SvImJ.NOD_ShiLtJ.vcf.genes.csv")
-vcf644_3 <- read.csv(file = "source_data/chr9-variants/sanger.founders.CC006xCC044.chr9.101-114Mb.NZO_HlLtJ.NOD_ShiLtJ.vcf.genes.csv")
-vcf644_4 <- read.csv(file = "source_data/chr9-variants/sanger.founders.CC006xCC044.chr9.110-122Mb.NZO_HlLtJ.WSB_EiJ.vcf.genes.csv")
-vcf644_5 <- read.csv(file = "source_data/chr9-variants/sanger.founders.CC006xCC044.chr9.118-123.56Mb.129S1_SvImJ.WSB_EiJ.vcf.genes.csv")
+vcf644_1 <- read.csv(file = "source_data/chr9-variants/sanger.founders.CC006xCC044.chr9.98.92-110Mb.129S1_SvImJ.NOD_ShiLtJ.vcf.genes.csv")
+vcf644_2 <- read.csv(file = "source_data/chr9-variants/sanger.founders.CC006xCC044.chr9.101-114Mb.NZO_HlLtJ.NOD_ShiLtJ.vcf.genes.csv")
+vcf644_3 <- read.csv(file = "source_data/chr9-variants/sanger.founders.CC006xCC044.chr9.110-122Mb.NZO_HlLtJ.WSB_EiJ.vcf.genes.csv")
+vcf644_4 <- read.csv(file = "source_data/chr9-variants/sanger.founders.CC006xCC044.chr9.118-123.56Mb.129S1_SvImJ.WSB_EiJ.vcf.genes.csv")
 
 # change column names - col 9-10 indicate compared strains / make CC006 haplotype first 
-#colnames(vcf644_1)[9:10] <- c('CC044', 'CC006') # originally NOD, NZO
-#vcf644_1 <- vcf644_1[,c(names(vcf644_1)[1:8], 'CC006', 'CC044')] # switch order so CC006 is listed first 
-colnames(vcf644_2)[9:10] <- c('CC006', 'CC044') # originally 129S1, NOD
-colnames(vcf644_3)[9:10] <- c('CC044', 'CC006') # originally NOD, NZO 
-vcf644_3 <- vcf644_3[,c(names(vcf644_3)[1:8], 'CC006', 'CC044')] # switch order so CC006 is listed first
-colnames(vcf644_4)[9:10] <- c('CC006', 'CC044') # originally NZO, WSB
-colnames(vcf644_5)[9:10] <- c('CC006', 'CC044') # originally 129S1, WSB
+colnames(vcf644_1)[9:10] <- c('CC006', 'CC044') # originally 129S1, NOD
+colnames(vcf644_2)[9:10] <- c('CC044', 'CC006') # originally NOD, NZO 
+vcf644_2 <- vcf644_2[,c(names(vcf644_3)[1:8], 'CC006', 'CC044')] # switch order so CC006 is listed first
+colnames(vcf644_3)[9:10] <- c('CC006', 'CC044') # originally NZO, WSB
+colnames(vcf644_4)[9:10] <- c('CC006', 'CC044') # originally 129S1, WSB
 
-vcfs644 <- list(vcf644_2, vcf644_3, vcf644_4, vcf644_5) # list of all dfs (removed vcf644_1)
+vcfs644 <- list(vcf644_1, vcf644_2, vcf644_3, vcf644_4) # list of all dfs
 allvcf644 <- do.call("rbind", vcfs644) # combine into one dataframe
-# remove redundant 
 
 allvcf644 <- allvcf644[,c('gene_name', names(allvcf644)[1:7], names(allvcf644)[9:10])] # re-order so gene_name is first
 allvcf644 <- allvcf644[order(allvcf644$gene_name),] # order by gene name 
@@ -67,9 +61,7 @@ allvcf1174 <- allvcf1174[order(allvcf1174$gene_name),] # order by gene name
 allvcf1174 <- allvcf1174[which(allvcf1174$ANN != "intergenic_variant"),] # filter out intergenic
 genes1174 <- unique(allvcf1174$gene_name) # candidate gene list 
 
-
 #-------------------------------intersection-----------------------------------#
-# intersect 
 intrsct <- intersect(genes644, genes1174)
 
 #------------------------intersect variant analysis----------------------------#
@@ -81,13 +73,8 @@ colnames(allvcf1174)[9:10] <- c('susceptible', 'resistant')
 
 allvcf <- rbind(allvcf644, allvcf1174)
 
-# only want to look at genes that are in the intersection of candidate genes (filtering from there)
-# allvcf <- completevcf[which(completevcf$gene_name %in% intrsct),]
-# sort by gene name then variant ID 
-# allvcf <- allvcf[order(allvcf$gene_name, allvcf$ID),] 
-
 genelist <- intrsct
-dqdgenes <- vector()
+dqdgenes <- vector() # vector for disqualified genes 
 
 cand_gene_sum <- data.frame(gene_name = character(),
                             category = character(),

@@ -53,7 +53,7 @@ Run the following code to analyze data from the initial and repeated Collaborati
 Rscript parent-analysis.R
 ```
 
-Several plots will be produced in `figures/`.
+Several plots will be produced in `figures/screen/`.
 
 Intercross analysis
 -----------------------
@@ -61,9 +61,24 @@ Intercross analysis
 Run the following code to perform QTL mapping in each infection group and produce a PDF of results. 
 
 ```
-
+Rscript -e 'library(rmarkdown); rmarkdown::render("vr-Rqtl_SARS1.Rmd", "html_document")'
+Rscript -e 'library(rmarkdown); rmarkdown::render("vr-Rqtl_SARS2.Rmd", "html_document")'
+Rscript -e 'library(rmarkdown); rmarkdown::render("vr-Rqtl_HKU3.Rmd", "html_document")'
 ```
 
 Candidate gene analysis
 -----------------------
 
+Run the following command to decompress the *HrS43* variant data:
+
+```
+unzip source_data/chr9-variants.zip -d source_data/
+```
+
+Run the following Rscript to perform candidate gene analysis on *HrS43*. Since this region was identified in a similar cross between CC011 and CC074 [(Schäfer et al, 2022)](https://journals.asm.org/doi/10.1128/mbio.01454-22), this code looks for genes with variants segregating between the strains in both crosses, as well as genes with variants segregating between the strains in either cross. It produces two files: `results/candidate-genes.csv` contains all candidate genes, and `results/filtered-cand-genes.csv` contains only candidate genes that are segregating between both crosses. 
+
+```
+Rscript HrS43_cand_gene_analysis.R
+```
+
+Please reach out to elrisemberg@gmail.com with any questions or concerns. 

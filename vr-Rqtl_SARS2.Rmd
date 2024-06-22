@@ -9,7 +9,6 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-knitr::opts_knit$set(root.dir = "/Users/ellenrisemberg/Documents/ValdarFerris/Coronavirus/virus-research")
 ```
 
 ## Environment setup
@@ -20,8 +19,10 @@ library(qtl)
 library(MESS)
 library(MASS)
 library(plyr)
-source('/Users/ellenrisemberg/Documents/ValdarFerris/scripts/qtl_functions.R')
-source('/Users/ellenrisemberg/Documents/ValdarFerris/scripts/plot_noX.R')
+library(ggplot2)
+library(extRemes)
+source('code-dependencies/qtl_functions.R')
+source('code-dependencies/plot_noX.R')
 ```
 
 ggplot stuff:
@@ -42,7 +43,6 @@ plotMap(SARS2)
 
 SARS2$pheno$batch <- as.factor(SARS2$pheno$batch)
 ```
-
 
 ## Calculate derived measures 
 
@@ -80,8 +80,6 @@ SARS2 <- calc_auc(cross = SARS2, steps = c(0,1,2,3,4), col.name = "weight_aac",
 plotPheno(SARS2, pheno = 'weight_aac')
 ```
 
-
-
 ## Exploratory data analysis 
 
 How much weight do SARS-infected mice lose on average? 
@@ -115,7 +113,6 @@ This is clearly a typo, since the weight goes right back up on day 2. Remove d1 
 SARS2$pheno$d1[which(SARS2$pheno$mouse_ID=='CR_RB05_F_1136')] <- NA
 SARS2$pheno$pd1[which(SARS2$pheno$mouse_ID=='CR_RB05_F_1136')] <- NA
 SARS2$pheno$weight_aac[which(SARS2$pheno$mouse_ID=='CR_RB05_F_1136')] <- NA # unreliable AAC too 
-#SARS2 <- subset(SARS2, ind = !(SARS2$pheno$mouse_ID=='CR_RB05_F_1136')) # don't need to remove whole mouse 
 ```
 
 Two more mice have a large dip on day 2, so that % starting weight on d2 is < 80%. 
@@ -134,8 +131,6 @@ SARS2$pheno$weight_aac[which(SARS2$pheno$mouse_ID=='CR_RB05_M_1105')] <- NA # un
 SARS2$pheno$d2[which(SARS2$pheno$mouse_ID=='CR_RB05_M_0889')] <- NA
 SARS2$pheno$pd2[which(SARS2$pheno$mouse_ID=='CR_RB05_M_0889')] <- NA
 SARS2$pheno$weight_aac[which(SARS2$pheno$mouse_ID=='CR_RB05_M_0889')] <- NA # unreliable AAC too 
-# SARS2 <- subset(SARS2, ind = !(SARS2$pheno$mouse_ID=='CR_RB05_M_1105'))
-# SARS2 <- subset(SARS2, ind = !(SARS2$pheno$mouse_ID=='CR_RB05_M_0889'))
 ```
 
 Two mice have very steep increase from d3 to d4. % starting weight on d3 is < 90%, and on day 4 is > 100%. 
@@ -161,6 +156,7 @@ One mouse has a very large increase from d3-d4:
 ```{r}
 SARS2$pheno[which(SARS2$pheno[,'pd4'] > 120),]
 ```
+
 Remove the d3 and d4 measurements for that mouse:
 
 ```{r}
@@ -171,7 +167,6 @@ SARS2$pheno$d3[which(SARS2$pheno$mouse_ID=='CR_RB05_F_0977')] <- NA
 SARS2$pheno$pd3[which(SARS2$pheno$mouse_ID=='CR_RB05_F_0977')] <- NA
 SARS2$pheno$weight_aac[which(SARS2$pheno$mouse_ID=='CR_RB05_F_0977')] <- NA # unreliable AAC too 
 ```
-
 
 
 Try trajectory plot again without outliers:
@@ -223,9 +218,6 @@ Plot HS data
 plotPheno(SARS2, pheno.col = 'HS')
 ```
 
-
-
-
 ## Load models metadata 
 
 ```{r}
@@ -240,7 +232,7 @@ Before transforming data, save raw phenotypes for plotting later:
 raw_phenos <- SARS2$pheno
 ```
 
-Log-transform weight on d1-d4, don't transform AAC (already normal) or HS (categorical). 
+Log-transform weight on d1-d4, don't transform d0 (covariate only), AAC (already normal), or HS (categorical). 
 
 ```{r}
 SARS2$pheno$d1 <- log(SARS2$pheno$d1)
@@ -264,12 +256,14 @@ Batch, sex and baseline weight should all be covariates.
 
 ## Define covariates 
 
-
 ```{r}
-covar <- cbind(as.numeric(pull.pheno(SARS2, "sex") == "M"), 
-               pull.pheno(SARS2, "batch"),
-               pull.pheno(SARS2, "d0"))
-colnames(covar) <- c('sex', 'batch', 'd0')
+covar <- cbind(as.numeric(pull.pheno(SARS2, "sex") == "M"),
+               as.numeric(pull.pheno(SARS2, "batch") == 15), # batch 14 is baseline
+               as.numeric(pull.pheno(SARS2, "batch") == 16),
+               as.numeric(pull.pheno(SARS2, "batch") == 17),
+               as.numeric(pull.pheno(SARS2, "batch") == 18),
+               pull.pheno(SARS2, 'd0'))
+colnames(covar) <- c('sex', 'batch15', 'batch16', 'batch17', 'batch18', 'd0')
 ```
 
 ## Single QTL Analysis 
@@ -328,40 +322,36 @@ ensure_directory("figures/SARS2/scans")
 plot_scans(models = models, save = TRUE, save.dir = 'figures/SARS2/scans/')
 
 ensure_directory('figures/SARS2/scans/same_ylim/')
-plot_scans(models = models, save = TRUE, ylim = c(0,6.5), save.dir = 'figures/SARS2/scans/same_ylim/')
+plot_scans(models = models, save = TRUE, ylim = c(0,8.3), save.dir = 'figures/SARS2/scans/same_ylim/')
 ```
 
 
-HS scan with modified x-axis:
+HS scan with modified x-axis for **Fig. 3**:
 
 ```{r}
 png('figures/SARS2/scans/hs_modX.png', width = 750)
-plot_modX(hs, alternate.chrid = TRUE, xlab = "", ylab = "", main = "Lung hemorrhage score", 
-          cex.main = 2, cex.axis = 2, bandcol = "gray90", ylim = c(0, 6.5))
+plot_modX(hs, alternate.chrid = TRUE, xlab = "", ylab = "", main = "Congestion score", 
+          cex.main = 2, cex.axis = 2, bandcol = "gray90", ylim = c(0, 8.3))
 title(ylab = "LOD", line = 2.5, cex.lab = 2)
 title(xlab = "Chromosome", cex.lab = 2.3, line = 3.7) # cex.lab was 2
-abline(h = summary(hspA.gev), lty=1:2)
+abline(h = summary(hsp)$A, lty=1:2)
 dev.off()
 ```
 
-d3 scan with modified x-axis:
+d3 scan with modified x-axis for **Fig. 3**:
 
 ```{r}
 png('figures/SARS2/scans/d3_modX.png', width = 750)
 plot_modX(d3, alternate.chrid = TRUE, xlab = "", ylab = "", main = "Weight - day 3", 
-          cex.main = 2, cex.axis = 2, bandcol = "gray90", ylim = c(0,6.5))
+          cex.main = 2, cex.axis = 2, bandcol = "gray90", ylim = c(0,8.3))
 title(ylab = "LOD", line = 2.5, cex.lab = 2)
 title(xlab = "Chromosome", cex.lab = 2.3, line = 3.7) # cex.lab was 2
-abline(h = summary(d3pA.gev), lty=1:2)
+abline(h = summary(d3p)$A, lty=1:2)
 dev.off()
 ```
 
 
-
---------------------------------------------------------------------------------
-# Significant QTLs 
---------------------------------------------------------------------------------
-
+## Significant QTLs 
 
 Calculate 95% Bayes credible intervals for significant LOD peaks, and create a summary table with data for each LOD peak: marker, chromosome, position, LOD and positions of Bayes credible intervals.
 
@@ -376,7 +366,7 @@ kable(peaks)
 Turn into tibble for easier processing:
 
 ```{r}
-peakstbl <- as_tibble(peaks) %>% arrange(factor(chr, levels = c('9', '7', '12', '2', '15')))
+peakstbl <- as_tibble(peaks) %>% arrange(factor(chr, levels = c('9', '7', '12', '15')))
 ```
 
 
@@ -387,27 +377,26 @@ peakstbl$adj_pval <- rep(NA, nrow(peakstbl))
 
 for (i in 1:nrow(peakstbl)){
   modname <- peakstbl$model[i]
-  #permname <- models$perm.obj[which(models$obj == modname)]
+  permname <- models$perm.obj[which(models$obj == modname)]
   chr <- peakstbl$chr[i]
+
+  # Don't use this method as it can result in p = 0 if no permuted LODs 
+  # are greater than the observed LOD 
+  # p <- mean(get(permname)$A > summary(get(modname))[as.integer(chr),'lod'])
   
-  ### THIS NEEDS TO HANDLE X PERMS TOO - BUT NOT WORRYING ABOUT IT NOW BC NO X-CHR QTL 
-  gevname <- paste0(models$perm.obj[which(models$obj == modname)], 'A.gev')
-  fitgev.sum <- summary.fevd(get(gevname))
+  fitgev <- fevd(as.numeric(get(permname)$A), type = "GEV")
+  fitgevsum <- summary.fevd(fitgev)
   
   p <- pevd(q = as.numeric(peakstbl$lod[i]), 
-            loc = fitgev.sum$par[1], 
-            scale = fitgev.sum$par[2], 
-            shape = fitgev.sum$par[3], 
+            loc = fitgevsum$par[1], 
+            scale = fitgevsum$par[2], 
+            shape = fitgevsum$par[3], 
             lower.tail = FALSE)
-  
-  # p <- mean(get(permname) > summary(get(modname))[as.integer(chr),'lod'])
   
   peakstbl$adj_pval[i] <- p
 }
 
-
-peakstbl$adj_pval <- trimws(format(peakstbl$adj_pval, digits=2))
-peakstbl$adj_pval <- as.numeric(format(peakstbl$adj_pval, digits = 3))
+peakstbl$adj_pval <- format(peakstbl$adj_pval, digits = 2, scientific = TRUE)
 ```
 
 
@@ -452,10 +441,10 @@ for (i in 1:nrow(peakstbl)){
   marker = peakstbl$marker[i]
   mod = peakstbl$model[i]
   pheno.col = models$colname[models$obj == mod]
-  covar <- models$cov[models$obj == mod]
-  if (covar == "") {covar <- NULL}
+  covar_names <- models$cov[models$obj == mod]
+  if (covar_names == "") {covar_names <- NULL}
   
-  unadj.pval <- get_unadj_pval(SARS2, pheno.col, marker, covar)
+  unadj.pval <- get_unadj_pval(SARS2, pheno.col, marker, covar_df = covar, covar_names = covar_names)
   peakstbl$unadj_pval[i] <- unadj.pval
 }
 
@@ -471,10 +460,9 @@ peakstbl$QTL <- rep(NA, nrow(peakstbl))
 qtl_pheno_counts <- peakstbl %>% group_by(chr) %>% dplyr::summarize(n = n())
 
 peakstbl$QTL <- c(rep('HrS43', qtl_pheno_counts$n[qtl_pheno_counts$chr==9]),
-                  rep('HrS44', qtl_pheno_counts$n[qtl_pheno_counts$chr==7]), 
+                  rep('HrS44', qtl_pheno_counts$n[qtl_pheno_counts$chr==7]),
                   rep('HrS45', qtl_pheno_counts$n[qtl_pheno_counts$chr==12]),
-                  rep('HrS49', qtl_pheno_counts$n[qtl_pheno_counts$chr==2]),
-                  rep('HrS48', qtl_pheno_counts$n[qtl_pheno_counts$chr==15]))
+                  rep('HrS47', qtl_pheno_counts$n[qtl_pheno_counts$chr==15]))
 ```
 
 
@@ -497,10 +485,10 @@ for (i in 1:nrow(peakstbl)){
   marker = peakstbl$marker[i]
   mod = peakstbl$model[i]
   pheno.col = models$colname[models$obj == mod]
-  covar <- models$cov[models$obj == mod]
-  if (covar == "") {covar <- NULL}
+  covar_names <- models$cov[models$obj == mod]
+  if (covar_names == "") {covar_names <- NULL}
   
-  h2 <- get_var_expl(SARS2, pheno.col, marker, covar)
+  h2 <- get_var_expl(SARS2, pheno.col, marker, covar_df = covar, covar_names = covar_names)
   
   peakstbl$phenotypic.var.expl[i] <- h2
 }
@@ -516,10 +504,12 @@ Remove redundant data, re-order:
 
 ```{r}
 table1 <- peakstbl %>% 
-  arrange(match(chr, c('9', '7', '12', '2', '15')), as.numeric(adj_pval))
+  arrange(match(chr, c('9', '7', '12', '15')), as.numeric(adj_pval))
 
 # now that it's sorted by adjusted p-value, add */**/*** (makes it a string so can't sort)
-table1$adj_pval <- paste(table1$adj_pval, ifelse(table1$adj_pval < 0.005, '(***)', ifelse(table1$adj_pval < 0.05, '(**)', ifelse(table1$adj_pval < 0.10, '(*)', NA))))
+table1$adj_pval <- paste(table1$adj_pval, ifelse(as.numeric(table1$adj_pval) < 0.005, '(***)', 
+                                                 ifelse(as.numeric(table1$adj_pval) < 0.05, '(**)', 
+                                                        ifelse(as.numeric(table1$adj_pval) < 0.10, '(*)', NA))))
 
 col_order <- c('QTL', 'Phenotype', 'chrint', 'adj_pval', 'phenotypic.var.expl')
 table1 <- table1[,col_order]
@@ -533,15 +523,6 @@ write.csv(table1, file = "results/SARS2-QTLsummary.csv", row.names = FALSE)
 ```
 
 
-
-
-
-
-
-
-
-
-
 ## Multiple QTL analysis 
 
 Are chr7, chr12, chr15, chr18 significant after controlling for chr9?
@@ -551,42 +532,19 @@ geno7 <- pull.geno(SARS2, 7)[,'SBT072729469']
 geno9 <- pull.geno(SARS2, 9)[,'gUNC17242574']
 geno12 <- pull.geno(SARS2, 12)[,'S6R121129283']
 geno15 <- pull.geno(SARS2, 15)[,'gUNC26048180']
-geno18 <- pull.geno(SARS2, 18)[,'gUNC180267595']
 
 # significant together: 
-lmodfull <- lm(d3 ~ d0 + geno9 + geno7 + geno12 + geno15 + geno18, data = SARS2$pheno)
+lmodfull <- lm(d3 ~ d0 + geno9 + geno7 + geno12 + geno15, data = SARS2$pheno)
 summary(lmodfull)
 ```
-
-All except for chr18. Is chr18 even associated with d3 by itself though? 
-
-```{r}
-lmod <- lm(d3 ~ d0 + geno18, data = SARS2$pheno)
-summary(lmod)
-```
-
-No. 
-
-It is associated with HS: 
-
-```{r}
-lmod <- lm(HS ~ geno9 + geno7 + geno18, data = SARS2$pheno)
-summary(lmod)
-```
-
-So all QTL are real. 
-
-
-
-
 
 ## Phenotype x genotype plots for markers at significant LOD peaks 
 
 Define QTL names:
 
 ```{r}
-qtl.map <- data.frame(chr = c(9, 2, 7, 12, 15), 
-                      qtl_name = c('HrS43', 'HrS49', 'HrS44', 'HrS45', 'HrS48'))
+qtl.map <- data.frame(chr = c(9, 7, 12, 15), 
+                      qtl_name = c('HrS43', 'HrS44', 'HrS45', 'HrS47'))
 ```
 
 Plot PxG
@@ -611,8 +569,8 @@ plot_pxg(SARS2, cross.type = 'f2', raw.data = raw_phenos,
 PxG plot for Figure 4:
 
 ```{r}
-HrS26m <- 'S3N094839317'
-p <- pxg(cross = SARS2, pheno = SARS2$pheno$weight_aac, marker = HrS26m,
+HrS43m <- 'S3N094839317'
+p <- pxg(cross = SARS2, pheno = SARS2$pheno$weight_aac, marker = HrS43m,
      geno.map = list(A = "CC006", B = "CC044"), qtl.map = qtl.map,
      title = "SARS-CoV-2 MA10",
      theme = sbs_pxg_theme, ylim = c(-20,60))
@@ -622,7 +580,7 @@ Save plot:
 
 ```{r}
 ensure_directory("figures/Fig4")
-png("figures/Fig4/sars2-Hrs26-aac.png", width = 600)
+png("figures/Fig4/sars2-HrS43-aac.png", width = 600)
 p
 dev.off()
 ```
@@ -630,11 +588,8 @@ dev.off()
 Save R object for combining with other plots:
 
 ```{r}
-saveRDS(p, file = "derived_data/otherRobjects/sars2-pxg-Hrs26-aac.Rdata")
+saveRDS(p, file = "derived_data/otherRobjects/sars2-pxg-HrS43-aac.Rdata")
 ```
-
-
-
 
 
 

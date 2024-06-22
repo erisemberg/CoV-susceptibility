@@ -78,10 +78,11 @@ if (pad_geno_ids == TRUE){
       strings <- str_split(mouse_name, "_")[[1]] # separate back out for further checking
     }
     if (nchar(strings[4]) < 4){ # need to pad mouse number 
-      mouse_name <- paste(c(strings[1:3], sprintf("%04s", strings[4])), collapse = "_")
+      mouse_name <- paste(c(strings[1:3], sprintf("%04d", as.numeric(strings[4]))), collapse = "_")
     }
     colnames(geno)[i] <- toupper(mouse_name) 
   }
+  log(colnames(geno)[165]) ### DELETE THIS
   log(paste("Mouse IDs padded."))
 }
 
@@ -208,6 +209,7 @@ for (k in 1:length(pheno.names)){
 }
 
 log("Genotype and phenotype data integrated.")
+
 #------------------------------------------------------------------------------#
 #--------------------------------Output data-----------------------------------#
 #------------------------------------------------------------------------------#
