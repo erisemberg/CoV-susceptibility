@@ -56,7 +56,7 @@ Several plots will be produced in `figures/screen/`.
 Intercross analysis
 -----------------------
 
-Run the following code to perform QTL mapping in each infection group and produce a PDF of results. 
+Run the following code to perform QTL mapping in each infection group and produce a PDF of results. This may take some time the first time you run it, as part of this analysis is running computationally intensive permutation tests. 
 
 ```
 Rscript -e 'library(rmarkdown); rmarkdown::render("vr-Rqtl_SARS1.Rmd", "html_document")'
