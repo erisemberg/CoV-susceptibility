@@ -1,0 +1,9 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+source_data/chr9-variants/
+logs/
+derived_data/
+results/
+figures/

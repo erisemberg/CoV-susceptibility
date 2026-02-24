@@ -77,6 +77,17 @@ wt_plot <- ggplot(data = plotdf, mapping = aes(x = dpi, y = mean, color = Strain
   ylim(77,102) + 
   custom_colors +
   bw_big_theme 
+# ggsave("~/Documents/ValdarFerris/defense/figures/chapter3/screen_wt.png", width = 7, height = 5)
+# 
+# ggplot(plotdf, aes(x = dpi, y = mean, color = Strain)) + 
+#   geom_point(aes(alpha = Strain %in% c("CC006", "CC044"))) + 
+#   geom_line(aes(alpha = Strain %in% c("CC006", "CC044")), size = 1) + 
+#   labs(x = "Days post infection", y = "% of starting weight", title = "") + 
+#   ylim(77, 102) + 
+#   custom_colors +
+#   scale_alpha_manual(values = c(`TRUE` = 1, `FALSE` = 0.2), guide = "none") +
+#   bw_big_theme
+# ggsave("~/Documents/ValdarFerris/defense/figures/chapter3/screen_wt2.png", width = 7, height = 5)
 
 ensure_directory('figures/screen/')
 png("figures/screen/parent_weight.png", width = 600)
@@ -173,6 +184,38 @@ png("figures/screen/parent_hs.png")
 print(hs_plot)
 dev.off()
 
+# p_jit <- position_jitter(width = 0.1, height = 0, seed = 4)
+# ggplot(hsdf, aes(x = Strain, y = HS, color = Strain)) + 
+#   geom_point(position = p_jit, size = 2) +
+#   stat_summary(fun.data = mean_sdl, fun.args = list(mult = 1), geom = "errorbar", width = 0.5, size = 1) +
+#   stat_summary(fun = mean, geom = "point", size = 3) +
+#   theme(legend.position = "none") +
+#   custom_colors +
+#   coord_cartesian(ylim = c(-0.2, 4.5)) +
+#   bw_big_theme2 +
+#   theme(axis.title = element_text(size = 20), 
+#         axis.text = element_text(size = 18)) +
+#   guides(x = guide_axis(angle = 30)) +
+#   scale_alpha_manual(values = c(`TRUE` = 1, `FALSE` = 0.2), guide = "none") +
+#   labs(x = "Strain", y = "Congestion score", title = "")
+# ggsave("~/Documents/ValdarFerris/defense/figures/chapter3/screen_hs.png", width = 5, height = 5)
+# 
+# ggplot(hsdf, aes(x = Strain, y = HS, color = Strain)) + 
+#   geom_point(aes(alpha = Strain %in% c("CC006", "CC044")), position = p_jit, size = 2) +
+#   stat_summary(fun.data = mean_sdl, fun.args = list(mult = 1), geom = "errorbar",
+#                aes(alpha = Strain %in% c("CC006", "CC044")), width = 0.5, size = 1) +
+#   stat_summary(fun = mean, geom = "point", aes(alpha = Strain %in% c("CC006", "CC044")), size = 3) +
+#   theme(legend.position = "none") +
+#   custom_colors +
+#   coord_cartesian(ylim = c(-0.2, 4.5)) +
+#   bw_big_theme2 +
+#   theme(axis.title = element_text(size = 20), 
+#         axis.text = element_text(size = 18)) +
+#   guides(x = guide_axis(angle = 30)) +
+#   scale_alpha_manual(values = c(`TRUE` = 1, `FALSE` = 0.2), guide = "none") +
+#   labs(x = "Strain", y = "Congestion score", title = "")
+# ggsave("~/Documents/ValdarFerris/defense/figures/chapter3/screen_hs2.png", width = 5, height = 5)
+
 # plot HS for F2 parent strains
 hs_f2 <- hsdf[which(hsdf$Strain %in% c('CC006', 'CC044')),]
 
@@ -211,7 +254,7 @@ for (i in c(1:length(strain_ids))){
   df$Strain = strain_ids[strainID]
   
   dflong <- pivot_longer(df, cols = c(1:4), names_to = "rep", values_to = "Titer")
-  dflong$Titer <- log(dflong$Titer+1, base=10)
+  dflong$Titer <- log10(dflong$Titer+1)
   
   # combine mean, sd, strain for plotting 
   if (i==1){
@@ -243,6 +286,40 @@ titer_plot <- ggplot(data=titerdf, mapping=aes(x=Strain, y=Titer, color=Strain))
 png("figures/screen/parent_titer.png")
 print(titer_plot)
 dev.off()
+
+
+# p_jit <- position_jitter(width = 0.1, height = 0, seed = 6)
+# ggplot(titerdf, aes(x = Strain, y = Titer, color = Strain)) + 
+#   geom_point(position = p_jit, size = 2) +
+#   stat_summary(fun.data = mean_sdl, fun.args = list(mult = 1), geom = "errorbar", width = 0.5, size = 1) +
+#   stat_summary(fun = mean, geom = "point", size = 3) +
+#   theme(legend.position = "none") +
+#   custom_colors +
+#   coord_cartesian(ylim = c(-1, 7.1)) +
+#   bw_big_theme2 +
+#   theme(axis.title = element_text(size = 20), 
+#         axis.text = element_text(size = 18)) +
+#   guides(x = guide_axis(angle = 30)) +
+#   labs(x = "Strain", y = "Log titer (PFU/lobe)", title = "")
+# ggsave("~/Documents/ValdarFerris/defense/figures/chapter3/screen_titer.png", width = 5, height = 5)
+# 
+# ggplot(titerdf, aes(x = Strain, y = Titer, color = Strain)) + 
+#   geom_point(aes(alpha = Strain %in% c("CC006", "CC044")), position = p_jit, size = 2) +
+#   stat_summary(fun.data = mean_sdl, fun.args = list(mult = 1), geom = "errorbar",
+#                aes(alpha = Strain %in% c("CC006", "CC044")), width = 0.5, size = 1) +
+#   stat_summary(fun = mean, geom = "point", aes(alpha = Strain %in% c("CC006", "CC044")), size = 3) +
+#   theme(legend.position = "none") +
+#   custom_colors +
+#   coord_cartesian(ylim = c(-1, 7.1)) +
+#   bw_big_theme2 +
+#   theme(axis.title = element_text(size = 20), 
+#         axis.text = element_text(size = 18)) +
+#   guides(x = guide_axis(angle = 30)) +
+#   scale_alpha_manual(values = c(`TRUE` = 1, `FALSE` = 0.2), guide = "none") +
+#   labs(x = "Strain", y = "Log titer (PFU/lobe)", title = "")
+# ggsave("~/Documents/ValdarFerris/defense/figures/chapter3/screen_titer2.png", width = 5, height = 5)
+
+
 
 # plot titer for F2 parent CC strains 
 titer_f2 <- titerdf[which(hsdf$Strain %in% c('CC006', 'CC044')),]
